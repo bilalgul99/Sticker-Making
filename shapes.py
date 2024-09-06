@@ -18,28 +18,29 @@ def detect_object(image):
     # Step 1: Convert image to grayscale
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     
-    # Step 2: Threshold to remove white background (adaptive threshold)
-    thresh = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 11, 2)
-
-    # Step 3: Find all contours, including internal ones
-    contours, _ = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    # Step 2: Apply Gaussian blur to reduce noise
+    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
     
-    # Step 4: Filter and combine contours
-    min_area = 100  # Adjust this value to filter out small noise
-    filtered_contours = [cnt for cnt in contours if cv2.contourArea(cnt) > min_area]
+    # Step 3: Edge detection using Canny
+    edges = cv2.Canny(blurred, 50, 150)
     
-    if filtered_contours:
-        # Combine all filtered contours into a single mask
+    # Step 4: Dilate the edges to connect nearby edges
+    kernel = np.ones((3,3), np.uint8)
+    dilated = cv2.dilate(edges, kernel, iterations=2)
+    
+    # Step 5: Find contours
+    contours, _ = cv2.findContours(dilated, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    
+    if contours:
+        # Find the largest contour (assumed to be the main object)
+        main_contour = max(contours, key=cv2.contourArea)
+        
+        # Create a mask from the main contour
         mask = np.zeros(gray.shape, dtype=np.uint8)
-        for contour in filtered_contours:
-            cv2.drawContours(mask, [contour], 0, 255, -1)
+        cv2.drawContours(mask, [main_contour], 0, 255, -1)
         
         # Use the mask to isolate the object
         object_isolated = cv2.bitwise_and(image, image, mask=mask)
-        
-        # Find the external contour of the combined mask
-        external_contour, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        main_contour = max(external_contour, key=cv2.contourArea)
         
         return main_contour, object_isolated
     else:
