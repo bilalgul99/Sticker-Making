@@ -13,31 +13,35 @@ def load_image(input_file):
     else:
         raise ValueError("Unsupported file format")
 
-# Improved object detection with white background removal
+# Improved object detection with white background removal, including internal regions
 def detect_object(image):
     # Step 1: Convert image to grayscale
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     
-    # Step 2: Threshold to remove white background
-    _, thresh = cv2.threshold(gray, 240, 255, cv2.THRESH_BINARY_INV)
+    # Step 2: Threshold to remove white background (adaptive threshold)
+    thresh = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 11, 2)
+
+    # Step 3: Find all contours, including internal ones
+    contours, _ = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
     
-    # Step 3: Morphological operations to clean the noise
-    kernel = np.ones((3, 3), np.uint8)
-    thresh_cleaned = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel, iterations=2)
+    # Step 4: Filter and combine contours
+    min_area = 100  # Adjust this value to filter out small noise
+    filtered_contours = [cnt for cnt in contours if cv2.contourArea(cnt) > min_area]
     
-    # Step 4: Find contours of the object
-    contours, _ = cv2.findContours(thresh_cleaned, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    
-    if contours:
-        # Assuming the largest contour is the object
-        contour = max(contours, key=cv2.contourArea)
-        # Create a mask from the contour to isolate the object
-        mask = np.zeros_like(gray)
-        cv2.drawContours(mask, [contour], -1, 255, thickness=cv2.FILLED)
+    if filtered_contours:
+        # Combine all filtered contours into a single mask
+        mask = np.zeros(gray.shape, dtype=np.uint8)
+        for contour in filtered_contours:
+            cv2.drawContours(mask, [contour], 0, 255, -1)
         
-        # Isolate the object from the original image using the mask
+        # Use the mask to isolate the object
         object_isolated = cv2.bitwise_and(image, image, mask=mask)
-        return contour, object_isolated
+        
+        # Find the external contour of the combined mask
+        external_contour, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        main_contour = max(external_contour, key=cv2.contourArea)
+        
+        return main_contour, object_isolated
     else:
         return None, image
 
